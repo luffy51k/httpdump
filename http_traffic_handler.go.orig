@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"compress/zlib"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -310,16 +311,6 @@ func (h *HTTPTrafficHandler) printCurlRequest(req *httpport.Request) {
 	h.writeLine()
 }
 
-// MyHTTPRequest is my struct
-type MyHTTPRequest struct {
-	src        string
-	dst        string
-	method     string
-	requestURI string
-	proto      string
-	header     []string
-}
-
 // print http request
 func (h *HTTPTrafficHandler) printNormalRequest(req *httpport.Request) {
 	//TODO: expect-100 continue handle
@@ -328,22 +319,11 @@ func (h *HTTPTrafficHandler) printNormalRequest(req *httpport.Request) {
 		return
 	}
 
-	// Own MyHTTPRequest
-	myHTTPRequest := MyHTTPRequest{
-		src:        h.key.srcString(),
-		dst:        h.key.dstString(),
-		method:     req.Method,
-		requestURI: req.RequestURI,
-		proto:      req.Proto,
-		header:     req.RawHeaders,
-	}
-	// h.writeLine(strings.Repeat("*", 10), " REQUEST")
-	h.writeLine(myHTTPRequest)
-	// h.writeLine()
-	// h.writeLine(strings.Repeat("*", 10), " REQUEST ", h.key.srcString(), " -----> ", h.key.dstString(), " // ", h.startTime.Format(time.RFC3339Nano))
+	h.writeLine()
+	h.writeLine(strings.Repeat("*", 10), " REQUEST ", h.key.srcString(), " -----> ", h.key.dstString(), " // ", h.startTime.Format(time.RFC3339Nano))
 
-	// h.writeLine(req.Method, req.RequestURI, req.Proto)
-	// h.printHeader(req.Header)
+	h.writeLine(req.Method, req.RequestURI, req.Proto)
+	h.printHeader(req.Header)
 
 	var hasBody = true
 	if req.ContentLength == 0 || req.Method == "GET" || req.Method == "HEAD" || req.Method == "TRACE" ||
@@ -370,19 +350,11 @@ func (h *HTTPTrafficHandler) printNormalRequest(req *httpport.Request) {
 		return
 	}
 
-	//h.writeLine()
+	h.writeLine()
 
 	if hasBody {
 		h.printBody(req.Header, req.Body)
 	}
-}
-
-// MyHTTPResponse is my struct
-type MyHTTPResponse struct {
-	src        string
-	dst        string
-	statusLine string
-	header     []string
 }
 
 // print http response
@@ -391,22 +363,13 @@ func (h *HTTPTrafficHandler) printResponse(uri string, resp *httpport.Response) 
 	if h.option.Level == "url" {
 		return
 	}
-	// h.writeLine(strings.Repeat("*", 10), " RESPONSE ")
-	// own http response formating
-	myHTTPResp := MyHTTPResponse{
-		src:        h.key.srcString(),
-		dst:        h.key.dstString(),
-		statusLine: resp.StatusLine,
-		header:     resp.RawHeaders,
-	}
-	h.writeLine(myHTTPResp)
-	///
-	//h.writeLine(strings.Repeat("*", 10), " RESPONSE ", h.key.srcString(), " <----- ", h.key.dstString(), " // ", h.startTime.Format(time.RFC3339Nano), "-", h.endTime.Format(time.RFC3339Nano), "=", h.endTime.Sub(h.startTime).String())
 
-	// h.writeLine(resp.StatusLine)
-	// for _, header := range resp.RawHeaders {
-	// 	h.writeLine(header)
-	// }
+	h.writeLine(strings.Repeat("*", 10), " RESPONSE ", h.key.srcString(), " <----- ", h.key.dstString(), " // ", h.startTime.Format(time.RFC3339Nano), "-", h.endTime.Format(time.RFC3339Nano), "=", h.endTime.Sub(h.startTime).String())
+
+	h.writeLine(resp.StatusLine)
+	for _, header := range resp.RawHeaders {
+		h.writeLine(header)
+	}
 
 	var hasBody = true
 	if resp.ContentLength == 0 || resp.StatusCode == 304 || resp.StatusCode == 204 {
@@ -432,8 +395,7 @@ func (h *HTTPTrafficHandler) printResponse(uri string, resp *httpport.Response) 
 		return
 	}
 
-	//h.writeLine()
-
+	h.writeLine()
 	if hasBody {
 		h.printBody(resp.Header, resp.Body)
 	}
@@ -461,13 +423,6 @@ func (h *HTTPTrafficHandler) tryDecompress(header httpport.Header, reader io.Rea
 	} else {
 		return reader, false
 	}
-}
-
-// MyPrintBody is my struct
-type MyPrintBody struct {
-	src    string
-	dst    string
-	myBody string
 }
 
 // print http request/response body
@@ -516,24 +471,16 @@ func (h *HTTPTrafficHandler) printBody(header httpport.Header, reader io.ReadClo
 	}
 
 	// prettify json
-	// if mimeType.subType == "json" || likeJSON(body) {
-	// 	var jsonValue interface{}
-	// 	_ = json.Unmarshal([]byte(body), &jsonValue)
-	// 	prettyJSON, err := json.MarshalIndent(jsonValue, "", "    ")
-	// 	if err == nil {
-	// 		body = string(prettyJSON)
-	// 	}
-	// }
-	noSpaceString := strings.ReplaceAll(body, "\n", " ")
-	// encodedStr := base64.StdEncoding.EncodeToString([]byte(body))
-	myBody := MyPrintBody{
-		src:    h.key.srcString(),
-		dst:    h.key.dstString(),
-		myBody: noSpaceString,
+	if mimeType.subType == "json" || likeJSON(body) {
+		var jsonValue interface{}
+		_ = json.Unmarshal([]byte(body), &jsonValue)
+		prettyJSON, err := json.MarshalIndent(jsonValue, "", "    ")
+		if err == nil {
+			body = string(prettyJSON)
+		}
 	}
-	h.writeLine(myBody)
-	// send_kafka(string(myBody)
-	//h.writeLine()
+	h.writeLine(body)
+	h.writeLine()
 }
 
 func (h *HTTPTrafficHandler) printNonTextTypeBody(reader io.Reader, contentType string, isBinary bool) error {
